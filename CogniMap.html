@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CogniNav Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Prevent body scroll */
+        }
+        #app-container { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+        #left-panel { width: 320px; min-width: 320px; background-color: #f0f4f8; padding: 1rem; display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; border-right: 1px solid #e2e8f0; }
+        #right-panel { flex-grow: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        #map { flex-grow: 1; background-color: #e0e0e0; border-radius: 0.5rem; overflow: hidden; position: relative; }
+        #logs-panel { position: absolute; bottom: 0; left: 0; right: 0; height: 200px; background-color: rgba(255, 255, 255, 0.95); border-top: 1px solid #e2e8f0; transform: translateY(100%); transition: transform 0.3s ease-out; z-index: 10; display: flex; flex-direction: column; border-radius: 0.5rem 0.5rem 0 0; box-shadow: 0 -4px 10px rgba(0,0,0,0.1); }
+        #logs-panel.open { transform: translateY(0); }
+        #logs-header { padding: 0.75rem 1rem; background-color: #cbd5e1; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-radius: 0.5rem 0.5rem 0 0; }
+        #logs-content { flex-grow: 1; padding: 1rem; overflow-y: auto; font-size: 0.875rem; color: #475569; }
+        .log-entry { margin-bottom: 0.5rem; }
+        .notification { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: bold; color: #333; z-index: 20; box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0; transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; }
+        .notification.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .notification.warning { background-color: #fbbf24; /* Amber 400 */ }
+        .notification.emergency { background-color: #f97316; /* Orange 500 */ color: white; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 50; visibility: hidden; opacity: 0; transition: opacity 0.3s ease, visibility 0.3s ease; }
+        .modal-overlay.show { visibility: visible; opacity: 1; }
+        .modal-content { background-color: white; padding: 2rem; border-radius: 0.75rem; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3); max-width: 500px; text-align: center; }
+        .modal-content button { margin-top: 1rem; padding: 0.75rem 1.5rem; border-radius: 0.5rem; background-color: #3b82f6; color: white; font-weight: bold; cursor: pointer; transition: background-color 0.2s; }
+        .modal-content button:hover { background-color: #2563eb; }
+        .badge { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem; border-radius: 0.5rem; background-color: #e2e8f0; transition: all 0.3s ease; }
+        .badge .badge-icon { filter: grayscale(100%); opacity: 0.5; }
+        .badge .badge-text { color: #64748b; }
+        .badge.completed { background-color: #dcfce7; /* Green 100 */ }
+        .badge.completed .badge-icon { filter: grayscale(0%); opacity: 1; }
+        .badge.completed .badge-text { color: #166534; /* Green 800 */ font-weight: 600; }
+        @media (max-width: 768px) { #app-container { flex-direction: column; } #left-panel { width: 100%; min-width: unset; height: auto; max-height: 50vh; border-right: none; border-bottom: 1px solid #e2e8f0; } #right-panel { height: 50vh; } #logs-panel { height: 150px; } }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="app-container">
+        <!-- Left Panel -->
+        <div id="left-panel">
+            <h1 class="text-2xl font-bold text-gray-800 mb-2">CogniNav Pro</h1>
+
+            <!-- Vital Signs -->
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Vital Signs</h2>
+                <div class="grid grid-cols-3 gap-4 text-center">
+                    <div><p class="text-gray-500 text-sm">Pulse</p><p id="pulse" class="text-xl font-bold text-red-500">72 bpm</p></div>
+                    <div><p class="text-gray-500 text-sm">SpO2</p><p id="spo2" class="text-xl font-bold text-blue-500">98%</p></div>
+                    <div><p class="text-gray-500 text-sm">EDA</p><p id="kep" class="text-xl font-bold text-green-500">5 uS</p></div>
+                </div>
+            </div>
+
+            <!-- Driving Awards -->
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Driving Awards</h2>
+                <div class="flex flex-col gap-2">
+                    <p class="text-sm text-gray-600">Stress-Free Streak: <strong id="stress-free-days" class="text-blue-600">0</strong> days</p>
+                    <div id="badge-7-days" class="badge">
+                        <svg class="w-8 h-8 badge-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#fbbf24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                        <span class="badge-text">7 Days Stress-Free</span>
+                    </div>
+                    <div id="badge-30-days" class="badge">
+                         <svg class="w-8 h-8 badge-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#3b82f6"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.634 13.208-1.414 1.414L12 13.414l-3.22 3.208-1.414-1.414L10.586 12 7.366 8.78l1.414-1.414L12 10.586l3.22-3.22 1.414 1.414L13.414 12l3.22 3.208z"/></svg>
+                        <span class="badge-text">30 Days Stress-Free</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-col gap-3">
+                <button id="alt-route-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">ALT ROUTE</button>
+                <button id="near-rest-poi-btn" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">NEAR REST POI</button>
+                <div id="poi-dropdown" class="hidden bg-white p-3 rounded-lg shadow-md mt-2">
+                    <p class="font-semibold text-gray-700 mb-2">Nearby POIs:</p>
+                    <ul id="poi-list" class="list-disc list-inside text-gray-600"></ul>
+                </div>
+            </div>
+
+            <!-- Test Scenario Block -->
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Test Scenarios</h2>
+                <div class="flex flex-col gap-3">
+                    <button id="hard-traffic-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">HARD TRAFFIC / ACCIDENT</button>
+                    <button id="emergency-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">EMERGENCY / DISEASE</button>
+                    <button id="normal-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">NORMAL (Simulate Good Day)</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel -->
+        <div id="right-panel">
+            <div id="map" class="rounded-lg shadow-lg"></div>
+            <div id="logs-panel" class="hidden">
+                <div id="logs-header" class="flex justify-between items-center">
+                    <h2 class="text-lg font-semibold text-gray-700">Operation Log (LOGS)</h2>
+                    <button id="toggle-logs-btn" class="text-gray-600 hover:text-gray-800"><svg class="w-6 h-6 transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg></button>
+                </div>
+                <div id="logs-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Pop-up -->
+    <div id="notification-popup" class="notification hidden"></div>
+
+    <!-- Emergency Modal -->
+    <div id="emergency-modal-overlay" class="modal-overlay">
+        <div class="modal-content bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-lg">
+            <p id="emergency-modal-text" class="text-xl font-bold mb-4">ATTENTION! Critical changes in vital signs detected!</p>
+            <p class="mb-4">System suggests calling emergency services or finding the nearest hospital.</p>
+            <button id="deactivate-emergency-btn" class="bg-red-600 hover:bg-red-700">I'm OK / Cancel Call</button>
+            <button id="call-emergency-now-btn" class="bg-red-800 hover:bg-red-900 ml-4">Call Emergency Services</button>
+        </div>
+    </div>
+
+    <script>
+
+        // Got It
+    
+
+        let map;
+        let markers = [];
+        let polylines = [];
+        let infoWindow;
+        let emergencyTimer;
+        let vitalSignsInterval;
+        let emergencyActive = false;
+        let logsPanelOpen = false;
+
+        const mapElement = document.getElementById('map');
+        const pulseElement = document.getElementById('pulse');
+        const spo2Element = document.getElementById('spo2');
+        const kepElement = document.getElementById('kep');
+        const logsPanel = document.getElementById('logs-panel');
+        const logsContent = document.getElementById('logs-content');
+        const toggleLogsBtn = document.getElementById('toggle-logs-btn');
+        const notificationPopup = document.getElementById('notification-popup');
+        const poiDropdown = document.getElementById('poi-dropdown');
+        const poiList = document.getElementById('poi-list');
+        const emergencyModalOverlay = document.getElementById('emergency-modal-overlay');
+        const emergencyModalText = document.getElementById('emergency-modal-text');
+        const deactivateEmergencyBtn = document.getElementById('deactivate-emergency-btn');
+        const callEmergencyNowBtn = document.getElementById('call-emergency-now-btn');
+        const stressFreeDaysEl = document.getElementById('stress-free-days');
+        const badge7DaysEl = document.getElementById('badge-7-days');
+        const badge30DaysEl = document.getElementById('badge-30-days');
+
+        let vitalSigns = { pulse: 72, spo2: 98, kep: 5 };
+        let mapState = 'normal';
+        let appState = { stressFreeDays: 3 }; // Start with 3 days for demo
+
+        const initialMapCenter = { lat: 34.052235, lng: -118.243683 };
+        const initialZoom = 12;
+
+        const normalRoutePath = [{ lat: 34.052, lng: -118.243 }, { lat: 34.060, lng: -118.250 }, { lat: 34.065, lng: -118.260 }];
+        const hardTrafficRoutePath = [{ lat: 34.052, lng: -118.243 }, { lat: 34.055, lng: -118.248 }, { lat: 34.058, lng: -118.252 }, { lat: 34.060, lng: -118.250 }, { lat: 34.065, lng: -118.260 }];
+        const altRoutePath = [{ lat: 34.052, lng: -118.243 }, { lat: 34.058, lng: -118.235 }, { lat: 34.062, lng: -118.240 }, { lat: 34.065, lng: -118.260 }];
+        const simulatedPOIs = [
+            { name: 'Quiet Cafe "Cozy"', lat: 34.045, lng: -118.230, type: 'Cafe' },
+            { name: 'Green Oasis Park', lat: 34.070, lng: -118.270, type: 'Rest Area' },
+            { name: 'Serenity Hotel', lat: 34.050, lng: -118.255, type: 'Hotel' },
+            { name: 'Health Hospital', lat: 34.060, lng: -118.240, type: 'Hospital' },
+            { name: 'Rest Stop Gas Station', lat: 34.040, lng: -118.260, type: 'Gas Station' }
+        ];
+
+        function initMap() {
+            map = new google.maps.Map(mapElement, { center: initialMapCenter, zoom: initialZoom, disableDefaultUI: true, zoomControl: true, mapTypeControl: true, streetViewControl: true, styles: [ { "featureType": "all", "elementType": "labels.text.fill", "stylers": [ { "color": "#7c93a3" }, { "lightness": "-10" } ] }, { "featureType": "all", "elementType": "labels.text.stroke", "stylers": [ { "color": "#ffffff" }, { "lightness": "100" } ] }, { "featureType": "all", "elementType": "labels.icon", "stylers": [ { "opacity": "0.7" } ] }, { "featureType": "administrative", "elementType": "geometry", "stylers": [ { "color": "#c7d2d8" } ] }, { "featureType": "administrative.country", "elementType": "labels.text.fill", "stylers": [ { "color": "#9e6161" } ] }, { "featureType": "administrative.province", "elementType": "geometry.stroke", "stylers": [ { "color": "#ffffff" } ] }, { "featureType": "landscape", "elementType": "geometry", "stylers": [ { "color": "#f0f4f8" } ] }, { "featureType": "poi", "elementType": "geometry", "stylers": [ { "color": "#e0e8f0" } ] }, { "featureType": "road", "elementType": "geometry", "stylers": [ { "color": "#ffffff" } ] }, { "featureType": "road", "elementType": "geometry.stroke", "stylers": [ { "color": "#c7d2d8" } ] }, { "featureType": "transit", "elementType": "geometry", "stylers": [ { "color": "#d2e2ee" } ] }, { "featureType": "water", "elementType": "geometry", "stylers": [ { "color": "#a7c9df" } ] } ] });
+            infoWindow = new google.maps.InfoWindow();
+            updateMapVisuals();
+            map.addListener('zoom_changed', () => addLogEntry(`Map zoom changed: ${map.getZoom()}. Pixels transform into zones.`));
+        }
+
+        function updateVitalSignsDisplay() {
+            pulseElement.textContent = `${Math.round(vitalSigns.pulse)} bpm`;
+            spo2Element.textContent = `${Math.round(vitalSigns.spo2)}%`;
+            kepElement.textContent = `${vitalSigns.kep.toFixed(1)} uS`;
+        }
+
+        function transitionVitalSigns(targetRanges, duration = 3000) {
+            clearInterval(vitalSignsInterval);
+            const steps = 30;
+            const interval = duration / steps;
+            const startVitals = { ...vitalSigns };
+            const targetVitals = {
+                pulse: Math.floor(Math.random() * (targetRanges.pulse.max - targetRanges.pulse.min + 1)) + targetRanges.pulse.min,
+                spo2: Math.floor(Math.random() * (targetRanges.spo2.max - targetRanges.spo2.min + 1)) + targetRanges.spo2.min,
+                kep: parseFloat((Math.random() * (targetRanges.kep.max - targetRanges.kep.min) + targetRanges.kep.min).toFixed(1))
+            };
+            const stepChange = {
+                pulse: (targetVitals.pulse - startVitals.pulse) / steps,
+                spo2: (targetVitals.spo2 - startVitals.spo2) / steps,
+                kep: (targetVitals.kep - startVitals.kep) / steps
+            };
+
+            let currentStep = 0;
+            vitalSignsInterval = setInterval(() => {
+                if (currentStep >= steps) {
+                    clearInterval(vitalSignsInterval);
+                    vitalSigns = targetVitals;
+                } else {
+                    vitalSigns.pulse += stepChange.pulse;
+                    vitalSigns.spo2 += stepChange.spo2;
+                    vitalSigns.kep += stepChange.kep;
+                    currentStep++;
+                }
+                updateVitalSignsDisplay();
+            }, interval);
+        }
+
+        function addLogEntry(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry text-gray-800 ${type === 'warning' ? 'text-yellow-700' : ''} ${type === 'error' ? 'text-red-700' : ''}`;
+            logEntry.innerHTML = `<span class="font-semibold">[${timestamp}]</span> ${message}`;
+            logsContent.prepend(logEntry);
+            if (logsContent.children.length > 50) logsContent.removeChild(logsContent.lastChild);
+        }
+
+        function toggleLogsPanel() {
+            logsPanelOpen = !logsPanelOpen;
+            logsPanel.classList.toggle('open', logsPanelOpen);
+            toggleLogsBtn.querySelector('svg').classList.toggle('rotate-180', logsPanelOpen);
+            addLogEntry(`Operation log ${logsPanelOpen ? 'opened' : 'hidden'}.`);
+        }
+
+        function showNotification(message, type, duration = 3000) {
+            notificationPopup.textContent = message;
+            notificationPopup.className = `notification ${type}`;
+            setTimeout(() => notificationPopup.classList.add('show'), 10);
+            setTimeout(() => {
+                notificationPopup.classList.remove('show');
+            }, duration);
+        }
+
+        function clearMapOverlays() {
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+            polylines.forEach(polyline => polyline.setMap(null));
+            polylines = [];
+        }
+
+        function generatePixelsAroundPolyline(path, count, radius = 0.005) {
+            const pixels = [];
+            for (let i = 0; i < count; i++) {
+                const pointIndex = Math.floor(Math.random() * path.length);
+                const point = path[pointIndex];
+                const lat = point.lat + (Math.random() - 0.5) * 2 * radius;
+                const lng = point.lng + (Math.random() - 0.5) * 2 * radius;
+                pixels.push({ lat, lng });
+            }
+            return pixels;
+        }
+
+        function updateMapVisuals() {
+            clearMapOverlays();
+            let pinkPixels = []; let purplePixels = []; let currentRoutePath = []; let routeColor = '#ec4899';
+
+            if (mapState === 'normal') {
+                pinkPixels = generatePixelsAroundPolyline(normalRoutePath, 150, 0.01);
+                purplePixels = generatePixelsAroundPolyline(normalRoutePath, 20, 0.01);
+                currentRoutePath = normalRoutePath;
+                routeColor = '#10B981'; // Emerald 500
+            } else if (mapState === 'hard_traffic') {
+                purplePixels = generatePixelsAroundPolyline(hardTrafficRoutePath, 200, 0.008); // Concentrated stress
+                pinkPixels = generatePixelsAroundPolyline(altRoutePath, 150, 0.01); // Calmness on alt route
+                currentRoutePath = hardTrafficRoutePath;
+                routeColor = '#8b5cf6'; // Violet 500 (stressful route)
+                const altRoutePolyline = new google.maps.Polyline({ path: altRoutePath, geodesic: true, strokeColor: '#10B981', strokeOpacity: 0.9, strokeWeight: 8, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 4 }, offset: '0', repeat: '20px' }], map: map, zIndex: 3 });
+                polylines.push(altRoutePolyline);
+            } else if (mapState === 'alt_route_active') {
+                pinkPixels = generatePixelsAroundPolyline(altRoutePath, 200, 0.01);
+                purplePixels = generatePixelsAroundPolyline(altRoutePath, 10, 0.01);
+                currentRoutePath = altRoutePath;
+                routeColor = '#10B981'; // Emerald 500
+            }
+
+            [pinkPixels, purplePixels].forEach((pixelSet, index) => {
+                const color = index === 0 ? '#ec4899' : '#8b5cf6';
+                pixelSet.forEach(pixel => {
+                    markers.push(new google.maps.Marker({ position: pixel, map: map, icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 0.7, strokeWeight: 0, scale: 3 }, zIndex: 1 }));
+                });
+            });
+
+            const routePolyline = new google.maps.Polyline({ path: currentRoutePath, geodesic: true, strokeColor: routeColor, strokeOpacity: 0.8, strokeWeight: 6, map: map, zIndex: 2 });
+            polylines.push(routePolyline);
+        }
+        
+        function updateBadges() {
+            stressFreeDaysEl.textContent = appState.stressFreeDays;
+            badge7DaysEl.classList.toggle('completed', appState.stressFreeDays >= 7);
+            badge30DaysEl.classList.toggle('completed', appState.stressFreeDays >= 30);
+        }
+
+        function handleAltRoute() {
+            addLogEntry('Requesting alternative route...');
+            showNotification('Searching for calm routes...', 'warning');
+            mapState = 'alt_route_active';
+            updateMapVisuals();
+            map.panTo(altRoutePath[1]);
+            map.setZoom(13);
+            addLogEntry('Alternative route found. Map updated.', 'info');
+        }
+
+        function handleNearRestPOI() {
+            addLogEntry('Searching for nearest rest POIs...');
+            showNotification('Loading POIs...', 'warning');
+            poiDropdown.classList.toggle('hidden');
+            if (!poiDropdown.classList.contains('hidden')) {
+                poiList.innerHTML = '';
+                simulatedPOIs.forEach(poi => {
+                    const listItem = document.createElement('li');
+                    listItem.textContent = `${poi.name} (${poi.type})`;
+                    poiList.appendChild(listItem);
+                    const poiMarker = new google.maps.Marker({
+                        position: { lat: poi.lat, lng: poi.lng },
+                        map: map,
+                        title: poi.name,
+                        icon: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+                        zIndex: 4
+                    });
+                    poiMarker.addListener('click', () => {
+                        infoWindow.setContent(`<strong>${poi.name}</strong><br>${poi.type}`);
+                        infoWindow.open(map, poiMarker);
+                        addLogEntry(`User clicked on POI: ${poi.name}.`, 'info');
+                    });
+                    markers.push(poiMarker);
+                });
+                addLogEntry('List of nearest POIs loaded and displayed on map.', 'info');
+            } else {
+                markers = markers.filter(marker => {
+                    if (marker.getIcon() === 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png') {
+                        marker.setMap(null);
+                        return false;
+                    }
+                    return true;
+                });
+                addLogEntry('POI list hidden.', 'info');
+            }
+        }
+
+        function handleHardTraffic() {
+            addLogEntry('Scenario activated: Hard Traffic. Stress level increased.', 'warning');
+            showNotification('Attention! Heavy traffic and increased tension ahead!', 'warning', 5000);
+            transitionVitalSigns({ pulse: { min: 85, max: 100 }, spo2: { min: 95, max: 97 }, kep: { min: 10, max: 20 } });
+            addLogEntry(`Vital signs transitioning to stressed state.`, 'warning');
+            appState.stressFreeDays = 0;
+            updateBadges();
+            addLogEntry('Stress-free driving streak reset.', 'warning');
+            mapState = 'hard_traffic';
+            updateMapVisuals();
+            map.panTo(hardTrafficRoutePath[1]); map.setZoom(14);
+            addLogEntry('Map updated: simulating traffic and emotional tension.', 'warning');
+            showNotification('Recommended: change route or take a break!', 'emergency', 7000);
+        }
+
+        function handleEmergency() {
+            if (emergencyActive) return;
+            addLogEntry('Scenario activated: Emergency / Disease!', 'error');
+            showNotification('CRITICAL CONDITION! Countdown to emergency call!', 'emergency', 10000);
+            transitionVitalSigns({ pulse: { min: 110, max: 130 }, spo2: { min: 85, max: 90 }, kep: { min: 20, max: 50 } }, 2000);
+            addLogEntry(`Vital signs critically changed.`, 'error');
+            appState.stressFreeDays = 0;
+            updateBadges();
+            addLogEntry('Stress-free driving streak reset due to emergency.', 'error');
+            emergencyActive = true;
+            emergencyModalOverlay.classList.add('show');
+            let countdown = 10;
+            const updateModalCountdown = () => {
+                emergencyModalText.textContent = `CRITICAL! Automatic call in ${countdown} sec.`;
+                countdown--;
+            };
+            updateModalCountdown();
+            const countdownInterval = setInterval(updateModalCountdown, 1000);
+            emergencyTimer = setTimeout(() => {
+                if (emergencyActive) { clearInterval(countdownInterval); callEmergencyServices(); }
+            }, 10000);
+        }
+
+        function callEmergencyServices() {
+            clearTimeout(emergencyTimer);
+            if (!emergencyActive) return;
+            addLogEntry('Automatic emergency services call activated!', 'error');
+            showNotification('Emergency services called! Your geolocation has been sent.', 'emergency', 10000);
+            emergencyActive = false;
+            emergencyModalOverlay.classList.remove('show');
+            const currentLocation = map.getCenter();
+            addLogEntry(`Geolocation sent: Lat ${currentLocation.lat().toFixed(6)}, Lng ${currentLocation.lng().toFixed(6)}.`, 'error');
+        }
+
+        function deactivateEmergency() {
+            clearTimeout(emergencyTimer);
+            emergencyActive = false;
+            emergencyModalOverlay.classList.remove('show');
+            addLogEntry('Emergency scenario manually deactivated.', 'info');
+            showNotification('Emergency call canceled.', 'warning');
+            handleNormal(false);
+        }
+
+        function handleNormal(incrementDay = true) {
+            addLogEntry('Resetting to normal state.', 'info');
+            showNotification('System in normal mode.', 'info');
+            transitionVitalSigns({ pulse: { min: 65, max: 75 }, spo2: { min: 97, max: 99 }, kep: { min: 2, max: 8 } });
+            if (incrementDay) {
+                appState.stressFreeDays++;
+                addLogEntry(`Good job! Stress-free day count: ${appState.stressFreeDays}.`, 'info');
+                updateBadges();
+            }
+            mapState = 'normal';
+            updateMapVisuals();
+            map.panTo(initialMapCenter); map.setZoom(initialZoom);
+            poiDropdown.classList.add('hidden');
+            markers = markers.filter(marker => {
+                if (marker.getIcon() === 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png') {
+                    marker.setMap(null); return false;
+                }
+                return true;
+            });
+            clearTimeout(emergencyTimer);
+            emergencyActive = false;
+            emergencyModalOverlay.classList.remove('show');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const script = document.createElement('script');
+
+
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap`;
+            script.async = true;
+            document.head.appendChild(script);
+
+            updateVitalSignsDisplay();
+            updateBadges();
+            
+            document.getElementById('alt-route-btn').addEventListener('click', handleAltRoute);
+            document.getElementById('near-rest-poi-btn').addEventListener('click', handleNearRestPOI);
+            document.getElementById('hard-traffic-btn').addEventListener('click', handleHardTraffic);
+            document.getElementById('emergency-btn').addEventListener('click', handleEmergency);
+            document.getElementById('normal-btn').addEventListener('click', () => handleNormal(true));
+
+            toggleLogsBtn.addEventListener('click', toggleLogsPanel);
+            deactivateEmergencyBtn.addEventListener('click', deactivateEmergency);
+            callEmergencyNowBtn.addEventListener('click', callEmergencyServices);
+
+            addLogEntry('CogniNav Pro application started.', 'info');
+            addLogEntry('Map is open by default. Operation log is hidden.', 'info');
+            logsPanel.classList.remove('hidden');
+        });
+
+        window.initMap = initMap;
+<script src="config.js"></script> 
+
+    </script>
+</body>
+</html>
