@@ -1,5 +1,5 @@
 
-Due to the tragedy in Texas, the application has been supplemented and revised. 
+## Due to the tragedy in Texas, the application has been supplemented and revised. ##
 The updated video is here https://youtu.be/uRZKOCI2AXM. 
 The link to the code is here: https://github.com/aura-emowise/UPD-Google-Maps-Platform-Awards.git
 DEMO link Live (https://upd-google-maps-platform-awards.onrender.com)
@@ -22,7 +22,7 @@ Cogni MAP is a next-generation navigation concept that shifts the focus from the
 The core idea is a system that understands the physical and mental state of the driver and **actively assists** them by suggesting calmer routes, providing cognitive analysis of the trip.
 
 
-
+![GIF Demo here](cogni-map.gif)
 ---
 
 ### 🚀 Live Demo
