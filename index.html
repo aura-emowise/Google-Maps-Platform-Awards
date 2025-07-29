@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CogniNav Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; overflow: hidden; }
+        #app-container { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+        #left-panel { width: 300px; min-width: 300px; background-color: #f0f4f8; padding: 1rem; display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; border-right: 1px solid #e2e8f0; }
+        #right-panel { flex-grow: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        #map { flex-grow: 1; background-color: #e0e0e0; border-radius: 0.5rem; overflow: hidden; position: relative; }
+        #logs-panel { position: absolute; bottom: 0; left: 0; right: 0; height: 200px; background-color: rgba(255, 255, 255, 0.95); border-top: 1px solid #e2e8f0; transform: translateY(100%); transition: transform 0.3s ease-out; z-index: 10; display: flex; flex-direction: column; border-radius: 0.5rem 0.5rem 0 0; box-shadow: 0 -4px 10px rgba(0,0,0,0.1); }
+        #logs-panel.open { transform: translateY(0); }
+        #logs-header { padding: 0.75rem 1rem; background-color: #cbd5e1; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-radius: 0.5rem 0.5rem 0 0; }
+        #logs-content { flex-grow: 1; padding: 1rem; overflow-y: auto; font-size: 0.875rem; color: #475569; }
+        .log-entry { margin-bottom: 0.5rem; }
+        .notification { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: bold; color: #333; z-index: 60; box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0; transition: opacity 0.3s ease-in-out; }
+        .notification.show { opacity: 1; }
+        .notification.warning { background-color: #fbbf24; }
+        .notification.emergency { background-color: #f97316; color: white; }
+        .notification.success { background-color: #34d399; color: white; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 50; visibility: hidden; opacity: 0; transition: opacity 0.3s ease, visibility 0.3s ease; }
+        .modal-overlay.show { visibility: visible; opacity: 1; }
+        .modal-content { background-color: white; padding: 2rem; border-radius: 0.75rem; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3); max-width: 500px; text-align: left; }
+        .modal-content button { margin-top: 1.5rem; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: bold; cursor: pointer; transition: background-color 0.2s; }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .report-entry { display: flex; align-items: center; padding: 0.5rem 0; }
+        .report-icon { width: 12px; height: 12px; border-radius: 50%; margin-right: 1rem; flex-shrink: 0;}
+        @media (max-width: 768px) { #app-container { flex-direction: column; } #left-panel { width: 100%; min-width: unset; height: auto; max-height: 50vh; border-right: none; border-bottom: 1px solid #e2e8f0; } #right-panel { height: 50vh; } #logs-panel { height: 150px; } }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="app-container">
+        <div id="left-panel">
+            <h1 class="text-2xl font-bold text-gray-800 mb-4">CogniNav Pro</h1>
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Vital Signs</h2>
+                <div class="grid grid-cols-3 gap-4 text-center">
+                    <div><p class="text-gray-500 text-sm">Pulse</p><p id="pulse" class="text-xl font-bold text-red-500">72 bpm</p></div>
+                    <div><p class="text-gray-500 text-sm">SpO2</p><p id="spo2" class="text-xl font-bold text-blue-500">98%</p></div>
+                    <div><p class="text-gray-500 text-sm">EDA</p><p id="kep" class="text-xl font-bold text-green-500">5 uS</p></div>
+                </div>
+            </div>
+            <div id="vns-indicator" class="bg-white p-3 rounded-lg shadow-md flex items-center justify-between">
+                <h3 class="text-md font-semibold text-gray-700">n.Vagus Stimulator</h3>
+                <div class="flex items-center gap-2">
+                    <div id="vns-dot" class="w-4 h-4 rounded-full bg-gray-400"></div>
+                    <span id="vns-status" class="font-bold text-gray-500">OFF</span>
+                </div>
+            </div>
+            <div class="flex flex-col gap-3">
+                <button id="alt-route-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">ALT ROUTE</button>
+                <button id="near-rest-poi-btn" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">NEAR REST POI</button>
+                <div id="poi-dropdown" class="hidden bg-white p-3 rounded-lg shadow-md mt-2">
+                    <p class="font-semibold text-gray-700 mb-2">Nearby POIs:</p><ul id="poi-list" class="list-disc list-inside text-gray-600"></ul>
+                </div>
+            </div>
+            <div id="awards-section" class="bg-white p-4 rounded-lg shadow-md hidden">
+                 <h2 class="text-lg font-semibold text-gray-700 mb-2">Awards</h2>
+                 <div id="badge-container" class="flex items-center gap-3 bg-green-100 p-3 rounded-lg">
+                    <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <p class="font-bold text-green-800">"Calm Driver" Award</p>
+                 </div>
+            </div>
+             <div class="flex flex-col gap-3">
+                <button id="trip-report-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200 mt-auto">TRIP REPORT</button>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <h2 class="text-lg font-semibold text-gray-700 mb-2">Test Scenarios</h2>
+                <div class="flex flex-col gap-3">
+                    <button id="hard-traffic-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">HARD TRAFFIC / ACCIDENT</button>
+                    <button id="emergency-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">EMERGENCY / DISEASE</button>
+                    <button id="normal-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">NORMAL</button>
+                </div>
+            </div>
+        </div>
+        <div id="right-panel"> <div id="map" class="rounded-lg shadow-lg"></div> <div id="logs-panel" class="hidden"> <div id="logs-header" class="flex justify-between items-center"> <h2 class="text-lg font-semibold text-gray-700">Operation Log (LOGS)</h2> <button id="toggle-logs-btn" class="text-gray-600 hover:text-gray-800"> <svg class="w-6 h-6 transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg> </button> </div> <div id="logs-content"></div> </div> </div>
+    </div>
+    <div id="notification-popup" class="notification hidden"></div>
+    <div id="emergency-modal-overlay" class="modal-overlay"> <div class="modal-content !text-center bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-lg"> <p class="text-xl font-bold mb-4">ATTENTION! Critical changes in vital signs detected!</p> <p class="mb-4">System suggests calling emergency services or finding the nearest hospital.</p> <button id="deactivate-emergency-btn" class="bg-red-600 hover:bg-red-700 text-white">I'm OK / Cancel Call</button> <button id="call-emergency-now-btn" class="bg-red-800 hover:bg-red-900 text-white ml-4">Call Emergency Services</button> </div> </div>
+    <div id="report-modal-overlay" class="modal-overlay"> <div class="modal-content"> <h2 class="text-2xl font-bold text-gray-800 mb-4">Cognitive Trip Analysis</h2> <div id="report-content" class="max-h-96 overflow-y-auto" style="border-bottom: 1px solid #e5e7eb; border-top: 1px solid #e5e7eb; padding: 1rem 0;"></div> <div class="text-center"> <button id="close-report-btn" class="bg-gray-500 hover:bg-gray-600 text-white">Close</button> </div> </div> </div>
+    
+    <script>
+        const GOOGLE_MAPS_API_KEY = "AIzaSyCHBYZuNzPGoLJhHRWKvSJtNpBufJTmvfE";
+        let map, directionsService, directionsRenderer;
+        let emotionMarkers = [], poiMarkers = [], polylines = [], tripEvents = [];
+        let emergencyTimer, countdownInterval;
+        let emergencyActive = false, logsPanelOpen = false, hasCalmDriverBadge = false;
+        const mapElement = document.getElementById('map');
+        const pulseElement = document.getElementById('pulse');
+        const spo2Element = document.getElementById('spo2');
+        const kepElement = document.getElementById('kep');
+        const vnsStatusElement = document.getElementById('vns-status');
+        const vnsDotElement = document.getElementById('vns-dot');
+        const awardsSection = document.getElementById('awards-section');
+        const logsPanel = document.getElementById('logs-panel');
+        const logsContent = document.getElementById('logs-content');
+        const toggleLogsBtn = document.getElementById('toggle-logs-btn');
+        const notificationPopup = document.getElementById('notification-popup');
+        const poiDropdown = document.getElementById('poi-dropdown');
+        const poiList = document.getElementById('poi-list');
+        const emergencyModalOverlay = document.getElementById('emergency-modal-overlay');
+        const reportModalOverlay = document.getElementById('report-modal-overlay');
+        const deactivateEmergencyBtn = document.getElementById('deactivate-emergency-btn');
+        const callEmergencyNowBtn = document.getElementById('call-emergency-now-btn');
+        const tripReportBtn = document.getElementById('trip-report-btn');
+        const closeReportBtn = document.getElementById('close-report-btn');
+        let vitalSigns = { pulse: 72, spo2: 98, kep: 5 };
+        let mapState = 'normal';
+        const initialMapCenter = { lat: 34.052235, lng: -118.243683 }; const initialZoom = 12;
+        const normalRoutePath = [ { lat: 34.052, lng: -118.243 }, { lat: 34.060, lng: -118.250 }, { lat: 34.065, lng: -118.260 }];
+        const hardTrafficRoutePath = [ { lat: 34.052, lng: -118.243 }, { lat: 34.055, lng: -118.248 }, { lat: 34.058, lng: -118.252 }, { lat: 34.060, lng: -118.250 }, { lat: 34.065, lng: -118.260 }];
+        const altRouteStart = { lat: 34.052, lng: -118.243 }; const altRouteEnd = { lat: 34.065, lng: -118.260 };
+        const simulatedPOIs = [ { name: 'Quiet Cafe "Cozy"', lat: 34.045, lng: -118.230, type: 'Cafe' }, { name: 'Green Oasis Park', lat: 34.070, lng: -118.270, type: 'Rest Area' }, { name: 'Serenity Hotel', lat: 34.050, lng: -118.255, type: 'Hotel' }, { name: 'Health Hospital', lat: 34.060, lng: -118.240, type: 'Hospital' }, { name: 'Rest Stop Gas Station', lat: 34.040, lng: -118.260, type: 'Gas Station' }];
+        function initMap() { if (typeof google === 'undefined' || typeof google.maps === 'undefined') { addLogEntry('Google Maps script failed to load.', 'error'); mapElement.innerHTML = '<div style="padding: 2rem; text-align: center; color: red;">Failed to load Google Maps.</div>'; return; } map = new google.maps.Map(mapElement, { center: initialMapCenter, zoom: initialZoom, disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy' }); directionsService = new google.maps.DirectionsService(); directionsRenderer = new google.maps.DirectionsRenderer({ suppressMarkers: true, polylineOptions: { strokeColor: '#ec4899', strokeWeight: 6 } }); directionsRenderer.setMap(map); updateMapVisuals(); map.addListener('zoom_changed', () => addLogEntry(`Map zoom changed: ${map.getZoom()}.`)); }
+        function updateVitalSignsDisplay() { pulseElement.textContent = `${vitalSigns.pulse} bpm`; spo2Element.textContent = `${vitalSigns.spo2}%`; kepElement.textContent = `${vitalSigns.kep} uS`; }
+        function generateRandomVitalSigns(ranges) { vitalSigns.pulse = Math.floor(Math.random() * (ranges.pulse.max - ranges.pulse.min + 1)) + ranges.pulse.min; vitalSigns.spo2 = Math.floor(Math.random() * (ranges.spo2.max - ranges.spo2.min + 1)) + ranges.spo2.min; vitalSigns.kep = parseFloat((Math.random() * (ranges.kep.max - ranges.kep.min) + ranges.kep.min).toFixed(1)); updateVitalSignsDisplay(); }
+        function addLogEntry(message, type = 'info') { const timestamp = new Date().toLocaleTimeString(); const logEntry = document.createElement('div'); logEntry.className = `log-entry text-gray-800 ${type === 'warning' ? 'text-yellow-700' : ''} ${type === 'error' ? 'text-red-700' : ''}`; logEntry.innerHTML = `<span class="font-semibold">[${timestamp}]</span> ${message}`; logsContent.prepend(logEntry); if (logsContent.children.length > 50) { logsContent.removeChild(logsContent.lastChild); } }
+        function toggleLogsPanel() { logsPanelOpen = !logsPanelOpen; logsPanel.classList.toggle('open', logsPanelOpen); toggleLogsBtn.querySelector('svg').classList.toggle('rotate-180', logsPanelOpen); addLogEntry(`Operation log ${logsPanelOpen ? 'opened' : 'hidden'}.`); }
+        function showNotification(message, type, duration = 3000) { notificationPopup.textContent = message; notificationPopup.className = `notification ${type} show`; setTimeout(() => { notificationPopup.classList.remove('show'); setTimeout(() => notificationPopup.classList.add('hidden'), 300); }, duration); notificationPopup.classList.remove('hidden'); }
+        function clearMapOverlays() { emotionMarkers.forEach(marker => marker.setMap(null)); emotionMarkers = []; polylines.forEach(polyline => polyline.setMap(null)); polylines = []; directionsRenderer.setDirections({routes: []}); }
+        function clearPoiMarkers() { poiMarkers.forEach(marker => marker.setMap(null)); poiMarkers = []; }
+        const generateRandomEmotionalPixels = (count, bounds) => { const pixels = []; for (let i = 0; i < count; i++) { const lat = bounds.south + Math.random() * (bounds.north - bounds.south); const lng = bounds.west + Math.random() * (bounds.east - bounds.west); pixels.push({ lat, lng }); } return pixels; };
+        function setVnsStatus(isOn) { if (isOn) { vnsStatusElement.textContent = 'ON'; vnsStatusElement.classList.remove('text-gray-500'); vnsStatusElement.classList.add('text-green-600'); vnsDotElement.classList.remove('bg-gray-400'); vnsDotElement.classList.add('bg-green-500'); addLogEntry('Vagus Nerve Stimulator activated to reduce stress.', 'info'); } else { vnsStatusElement.textContent = 'OFF'; vnsStatusElement.classList.remove('text-green-600'); vnsStatusElement.classList.add('text-gray-500'); vnsDotElement.classList.remove('bg-green-500'); vnsDotElement.classList.add('bg-gray-400'); addLogEntry('Vagus Nerve Stimulator is offline.', 'info'); } }
+        function awardCalmDriverBadge() { if (hasCalmDriverBadge) return; hasCalmDriverBadge = true; awardsSection.classList.remove('hidden'); showNotification('Award Unlocked: Calm Driver!', 'success', 4000); addLogEntry('User earned "Calm Driver" award for proactive stress management.', 'info'); }
+        function updateMapVisuals() { if (!map) return; clearMapOverlays(); const bounds = map.getBounds() || new google.maps.LatLngBounds( new google.maps.LatLng(initialMapCenter.lat - 0.1, initialMapCenter.lng - 0.1), new google.maps.LatLng(initialMapCenter.lat + 0.1, initialMapCenter.lng + 0.1) ); let pinkPixelCount = 0, purplePixelCount = 0; if (mapState === 'normal') { pinkPixelCount = 100; purplePixelCount = 20; const routePolyline = new google.maps.Polyline({ path: normalRoutePath, geodesic: true, strokeColor: '#ec4899', strokeOpacity: 0.8, strokeWeight: 5, map: map, zIndex: 2, icons: [{ icon: { path: google.maps.SymbolPath.CIRCLE, scale: 4, strokeColor: '#ec4899' }, offset: '0', repeat: '12px' }] }); polylines.push(routePolyline); } else if (mapState === 'hard_traffic') { pinkPixelCount = 30; purplePixelCount = 150; const routePolyline = new google.maps.Polyline({ path: hardTrafficRoutePath, geodesic: true, strokeColor: '#333333', strokeOpacity: 0.8, strokeWeight: 5, map: map, zIndex: 2, icons: [{ icon: { path: google.maps.SymbolPath.CIRCLE, scale: 4, strokeColor: '#333333' }, offset: '0', repeat: '12px' }] }); polylines.push(routePolyline); } else if (mapState === 'alt_route_active') { pinkPixelCount = 120; purplePixelCount = 10; } const createMarker = (position, color) => new google.maps.Marker({ position, map, icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 0.7, strokeWeight: 0, scale: 3 }, zIndex: 1 }); generateRandomEmotionalPixels(pinkPixelCount, bounds).forEach(p => emotionMarkers.push(createMarker(p, '#ec4899'))); generateRandomEmotionalPixels(purplePixelCount, bounds).forEach(p => emotionMarkers.push(createMarker(p, '#8b5cf6'))); }
+        function handleAltRoute() { if (!map) return; const altRouteBtn = document.getElementById('alt-route-btn'); altRouteBtn.disabled = true; altRouteBtn.textContent = 'SEARCHING...'; addLogEntry('Requesting REAL alternative route from Directions API...'); mapState = 'alt_route_active'; updateMapVisuals(); directionsService.route({ origin: altRouteStart, destination: altRouteEnd, travelMode: 'DRIVING' }, (response, status) => { if (status === 'OK') { addLogEntry('Real route received and displayed.', 'info'); directionsRenderer.setDirections(response); tripEvents.push({ type: 'recovery', message: 'A less stressful route was taken.', timestamp: new Date().toLocaleTimeString() }); awardCalmDriverBadge(); } else { addLogEntry('Directions request failed due to ' + status, 'error'); } altRouteBtn.disabled = false; altRouteBtn.textContent = 'ALT ROUTE'; }); }
+        function handleNearRestPOI() { if (!map) return; const nearRestPoiBtn = document.getElementById('near-rest-poi-btn'); nearRestPoiBtn.disabled = true; nearRestPoiBtn.textContent = 'SEARCHING...'; setTimeout(() => { poiDropdown.classList.toggle('hidden'); clearPoiMarkers(); if (!poiDropdown.classList.contains('hidden')) { addLogEntry('Searching for nearest rest POIs...'); showNotification('Loading POIs...', 'warning'); poiList.innerHTML = ''; simulatedPOIs.forEach(poi => { const listItem = document.createElement('li'); listItem.textContent = `${poi.name} (${poi.type})`; poiList.appendChild(listItem); poiMarkers.push(new google.maps.Marker({ position: { lat: poi.lat, lng: poi.lng }, map, title: poi.name, icon: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png', zIndex: 3 })); }); addLogEntry('List of nearest POIs loaded and displayed on map.', 'info'); } else { addLogEntry('POI list hidden.', 'info'); } nearRestPoiBtn.disabled = false; nearRestPoiBtn.textContent = 'NEAR REST POI'; }, 500); }
+        function handleHardTraffic() { if (!map) return; addLogEntry('Simulating external event: Hard Traffic / Accident.', 'info'); addLogEntry("Driver's vital signs are worsening due to stress...", 'warning'); generateRandomVitalSigns({ pulse: { min: 90, max: 110 }, spo2: { min: 94, max: 96 }, kep: { min: 15, max: 25 } }); tripEvents.push({ type: 'stress', message: `Stress detected (Pulse: ${vitalSigns.pulse} bpm).`, timestamp: new Date().toLocaleTimeString() }); addLogEntry(`CogniNav Pro detected changes: Pulse ${vitalSigns.pulse}, SpO2 ${vitalSigns.spo2}, EDA ${vitalSigns.kep}.`, 'warning'); setVnsStatus(true); mapState = 'hard_traffic'; updateMapVisuals(); map.setCenter(hardTrafficRoutePath[1]); map.setZoom(14); addLogEntry('Map updated to reflect high-stress zones.', 'warning'); showNotification('Stress detected! Consider an alternative route or a break.', 'emergency', 7000); }
+        function handleEmergency() { if (emergencyActive) return; addLogEntry('Simulating external event: Sudden Disease / Drowsiness.', 'info'); addLogEntry('CRITICAL DROP IN VITAL SIGNS DETECTED!', 'error'); generateRandomVitalSigns({ pulse: { min: 40, max: 140 }, spo2: { min: 80, max: 92 }, kep: { min: 25, max: 50 } }); tripEvents.push({ type: 'critical', message: `Critical event (SpO2: ${vitalSigns.spo2}%) - Emergency protocol activated.`, timestamp: new Date().toLocaleTimeString() }); addLogEntry(`CogniNav Pro has activated the emergency protocol due to critical vitals: Pulse ${vitalSigns.pulse}, SpO2 ${vitalSigns.spo2}, EDA ${vitalSigns.kep}.`, 'error'); setVnsStatus(true); emergencyActive = true; emergencyModalOverlay.classList.add('show'); let countdown = 10; const updateModalCountdown = () => { if (countdown >= 0) { emergencyModalOverlay.querySelector('p:first-of-type').textContent = `ATTENTION! Critical changes detected! Automatic call in ${countdown} sec.`; countdown--; } }; updateModalCountdown(); countdownInterval = setInterval(updateModalCountdown, 1000); emergencyTimer = setTimeout(() => { if (emergencyActive) callEmergencyServices(); }, 10000); }
+        function callEmergencyServices() { if (!map) return; clearInterval(countdownInterval); addLogEntry('Automatic emergency services call activated!', 'error'); showNotification('Emergency services called! Your geolocation has been sent.', 'emergency', 10000); emergencyActive = false; emergencyModalOverlay.classList.remove('show'); const currentLocation = map.getCenter(); addLogEntry(`Geolocation sent: Lat ${currentLocation.lat().toFixed(6)}, Lng ${currentLocation.lng().toFixed(6)}.`, 'error'); }
+        function deactivateEmergency() { clearTimeout(emergencyTimer); clearInterval(countdownInterval); emergencyActive = false; emergencyModalOverlay.classList.remove('show'); addLogEntry('Emergency protocol manually deactivated by user.', 'info'); showNotification('Emergency call canceled.', 'warning'); handleNormal(); }
+        function handleNormal() { if (!map) return; addLogEntry('Resetting to normal state. New trip started.', 'info'); showNotification('System in normal mode.', 'info'); generateRandomVitalSigns({ pulse: { min: 65, max: 80 }, spo2: { min: 97, max: 100 }, kep: { min: 2, max: 8 } }); setVnsStatus(false); mapState = 'normal'; updateMapVisuals(); map.setCenter(initialMapCenter); map.setZoom(initialZoom); poiDropdown.classList.add('hidden'); clearPoiMarkers(); clearTimeout(emergencyTimer); clearInterval(countdownInterval); emergencyActive = false; emergencyModalOverlay.classList.remove('show'); tripEvents = []; addLogEntry("Trip event log cleared.", 'info'); hasCalmDriverBadge = false; awardsSection.classList.add('hidden'); }
+        function showTripReport() { const reportContent = document.getElementById('report-content'); reportContent.innerHTML = ''; if (tripEvents.length === 0) { reportContent.innerHTML = '<p class="text-gray-500 text-center p-4">No significant cognitive events recorded for this trip yet.</p>'; } else { tripEvents.forEach(event => { let iconColor = 'bg-gray-400'; if (event.type === 'stress') iconColor = 'bg-yellow-500'; else if (event.type === 'critical') iconColor = 'bg-red-600'; else if (event.type === 'recovery') iconColor = 'bg-green-500'; const eventElement = document.createElement('div'); eventElement.className = 'report-entry'; eventElement.innerHTML = `<div class="report-icon ${iconColor}"></div><div><p class="font-semibold text-gray-800">${event.message}</p><p class="text-sm text-gray-500">${event.timestamp}</p></div>`; reportContent.appendChild(eventElement); }); } reportModalOverlay.classList.add('show'); }
+        document.addEventListener('DOMContentLoaded', () => { if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === "YOUR_API_KEY_HERE") { const errorMsg = 'ERROR: Google Maps API Key is missing.'; addLogEntry(errorMsg, 'error'); mapElement.innerHTML = `<div style="padding: 2rem; text-align: center; color: red;">${errorMsg}</div>`; return; } const script = document.createElement('script'); script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&libraries=routes`; script.async = true; script.defer = true; script.onerror = () => initMap(); document.head.appendChild(script); handleNormal(); document.getElementById('alt-route-btn').addEventListener('click', handleAltRoute); document.getElementById('near-rest-poi-btn').addEventListener('click', handleNearRestPOI); document.getElementById('hard-traffic-btn').addEventListener('click', handleHardTraffic); document.getElementById('emergency-btn').addEventListener('click', handleEmergency); document.getElementById('normal-btn').addEventListener('click', handleNormal); toggleLogsBtn.addEventListener('click', toggleLogsPanel); deactivateEmergencyBtn.addEventListener('click', deactivateEmergency); callEmergencyNowBtn.addEventListener('click', callEmergencyServices); tripReportBtn.addEventListener('click', showTripReport); closeReportBtn.addEventListener('click', () => reportModalOverlay.classList.remove('show')); addLogEntry('CogniNav Pro application started.', 'info'); logsPanel.classList.remove('hidden'); });
+        window.initMap = initMap;
+    </script>
+</body>
+</html>
