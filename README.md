@@ -10,6 +10,9 @@ The core idea is a system that understands the driver's physical and mental stat
 
 ### 🚀 Live Demo
 
+![CogniNav Pro Demo](https://github.com/aura-emowise/Google-Maps-Platform-Awards/blob/main/cognimap-demo.gif?raw=true)
+
+
 A live, interactive version of this prototype is available here:
 
 **[https://cognimap.onrender.com](https://cognimap.onrender.com)**
